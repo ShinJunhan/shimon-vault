@@ -92,6 +92,12 @@ variable "onprem_tailscale_ip" {
   description = "Tailscale IP of proj-mgmt (monitoring server). Retained for compatibility / other references; NO LONGER used for the read DB — see replica_tailscale_ip."
 }
 
+variable "prometheus_url" {
+  type        = string
+  description = "Full URL the app uses to reach Prometheus on proj-mgmt over Tailscale (e.g. http://100.106.194.10:9090). Never hardcode the IP elsewhere — this is the single source of truth."
+  default     = "http://100.106.194.10:9090"
+}
+
 variable "replica_tailscale_ip" {
   type        = string
   description = "Tailscale IP of the Postgres READ REPLICA host (proj-ubuntu01). The app's READ_DB_URL points here. This is proj-ubuntu01's stable Tailscale IP."

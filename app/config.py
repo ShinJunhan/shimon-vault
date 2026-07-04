@@ -72,6 +72,37 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# ── Prometheus (on-prem monitoring, via Tailscale) ────────────────────────────
+# The admin dashboard fetches infra metrics through Prometheus's HTTP API.
+# Prometheus runs on proj-mgmt. NEVER hardcode the Tailscale IP here — set
+# PROMETHEUS_URL in .env, e.g. http://100.106.194.10:9090
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
+
+# ── Demo console ──────────────────────────────────────────────────────────────
+# Master switch for the one-click demo buttons. Set DEMO_ENABLED=false to make
+# every /demo/* endpoint return 403 (safe default for any "real" deployment).
+DEMO_ENABLED = os.getenv("DEMO_ENABLED", "true").lower() == "true"
+# Public base URL the in-app attack runner targets. In deployment set this to
+# the live app URL (https://shimonvault.cshimomoto.com) — never hardcode.
+DEMO_BASE_URL = os.getenv("DEMO_BASE_URL", "http://localhost:8000")
+# Fake attacker IP shown in the audit log during demos. 203.0.113.0/24 is the
+# RFC 5737 TEST-NET-3 documentation range — not a real address.
+DEMO_ATTACKER_IP = os.getenv("DEMO_ATTACKER_IP", "203.0.113.42")
+DEMO_LOGIN_ATTEMPTS = int(os.getenv("DEMO_LOGIN_ATTEMPTS", "30"))
+# Seeded demo accounts used by the access-control and exfiltration
+# simulations below. These are fake demo credentials already committed
+# in db/seed.sql — not production secrets — but still overridable via
+# .env so nothing is truly hardcoded.
+DEMO_VIEWER_EMAIL = os.getenv("DEMO_VIEWER_EMAIL", "viewer@shimonvault.com")
+DEMO_VIEWER_PASSWORD = os.getenv("DEMO_VIEWER_PASSWORD", "View9012!")
+DEMO_EDITOR_EMAIL = os.getenv("DEMO_EDITOR_EMAIL", "editor@shimonvault.com")
+DEMO_EDITOR_PASSWORD = os.getenv("DEMO_EDITOR_PASSWORD", "Edit5678!")
+
+DEMO_ACCESS_CONTROL_ATTEMPTS = int(os.getenv("DEMO_ACCESS_CONTROL_ATTEMPTS", "6"))
+DEMO_EXFILTRATION_ATTEMPTS = int(os.getenv("DEMO_EXFILTRATION_ATTEMPTS", "15"))
+DEMO_DDOS_REQUESTS = int(os.getenv("DEMO_DDOS_REQUESTS", "200"))
+DEMO_DDOS_CONCURRENCY = int(os.getenv("DEMO_DDOS_CONCURRENCY", "20"))
+
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 RATE_LIMIT_LOGIN = os.getenv("RATE_LIMIT_LOGIN", "10/minute")
 RATE_LIMIT_DOWNLOAD = os.getenv("RATE_LIMIT_DOWNLOAD", "10/60seconds")

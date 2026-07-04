@@ -27,6 +27,7 @@ resource "aws_instance" "app_blue" {
     rds_port     = aws_db_instance.main.port
     db_name      = var.db_name
     read_db_host = var.replica_tailscale_ip
+    prometheus_url = var.prometheus_url
 
     jwt_secret_key = var.jwt_secret_key
 

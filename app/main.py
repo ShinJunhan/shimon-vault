@@ -8,15 +8,25 @@ STARTUP DESIGN:
   (takes 30-60 s after the EC2 boots).  The app serves traffic while the
   DB is still warming up; any route that actually hits the DB will get a
   503 until init_db() succeeds, but the health check stays green.
+
+FRONTEND SERVING:
+  In production the React SPA is built by the Dockerfile's frontend-builder
+  stage and copied to ./frontend_dist. This file mounts /assets and serves
+  index.html at "/" and as a catch-all, so the whole app loads same-origin
+  at shimonvault.cshimomoto.com (no CORS needed in prod). When the build is
+  absent (local `uvicorn` dev), "/" falls back to a small JSON info page.
 """
 
 import logging
 import threading
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -96,6 +106,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# Still useful for local dev (Vite on :5173 hitting this API). In production the
+# SPA is served same-origin, so CORS is not actually exercised there.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],      # tighten in production if needed
@@ -112,11 +124,17 @@ from routers.auth_router import router as auth_router  # noqa: E402
 from routers.docs_router import router as docs_router  # noqa: E402
 from routers.meetings_router import router as meetings_router  # noqa: E402
 from routers.audit_router import router as audit_router  # noqa: E402
+from routers.admin_router import router as admin_router  # noqa: E402
+from routers.demo_router import router as demo_router  # noqa: E402
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(docs_router, prefix="/docs", tags=["docs"])
 app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
 app.include_router(audit_router, prefix="/audit", tags=["audit"])
+# Admin dashboard data (Grafana-equivalent) + one-click demo triggers.
+# Both are admin-only; the SPA console calls these.
+app.include_router(admin_router, prefix="/admin", tags=["admin"])
+app.include_router(demo_router, prefix="/demo", tags=["demo"])
 
 
 # ── Audit middleware (logs EVERY request to the AuditStream / DynamoDB) ────────
@@ -125,6 +143,20 @@ app.include_router(audit_router, prefix="/audit", tags=["audit"])
 from middleware.audit_middleware import AuditMiddleware  # noqa: E402
 
 app.add_middleware(AuditMiddleware)
+
+
+# ── Frontend (React SPA) ──────────────────────────────────────────────────────
+# The Dockerfile copies the Vite build to ./frontend_dist. Built index.html
+# references /assets/*.js + /assets/*.css, so we mount that directory here.
+# Guarded with is_dir() so running uvicorn locally without a build won't crash.
+_FRONTEND_DIST = Path(__file__).resolve().parent / "frontend_dist"
+_FRONTEND_INDEX = _FRONTEND_DIST / "index.html"
+
+if (_FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+    logger.info("Serving SPA from %s", _FRONTEND_DIST)
+else:
+    logger.info("No frontend build at %s — serving API only", _FRONTEND_DIST)
 
 
 # ── Health endpoint ───────────────────────────────────────────────────────────
@@ -160,6 +192,9 @@ def health_check():
 # ── Root ──────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["root"])
 def root():
+    # Serve the SPA in production; fall back to API info when no build present.
+    if _FRONTEND_INDEX.is_file():
+        return FileResponse(_FRONTEND_INDEX)
     return {
         "project": PROJECT_NAME,
         "version": APP_VERSION,
@@ -167,3 +202,15 @@ def root():
         "health": "/health",
         "metrics": "/metrics",
     }
+
+
+# ── SPA fallback ──────────────────────────────────────────────────────────────
+# MUST be the last route declared. API routes, /assets, /docs, /metrics and
+# /health are all registered earlier, so they match first; anything else falls
+# through to index.html so the React app loads (and future client-side routes /
+# page refreshes work). Returns 404 only when no build is present.
+@app.get("/{full_path:path}", include_in_schema=False)
+def spa_fallback(full_path: str):
+    if _FRONTEND_INDEX.is_file():
+        return FileResponse(_FRONTEND_INDEX)
+    raise HTTPException(status_code=404, detail="Not found")

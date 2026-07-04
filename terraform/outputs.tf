@@ -5,53 +5,52 @@
 # Scripts use "terraform output -raw <name>" to read them
 # instead of ever hardcoding IPs.
 # ─────────────────────────────────────────────────────────────
-
 output "bastion_public_ip" {
   description = "Public IP of Bastion — use this to SSH in"
   value       = aws_instance.bastion.public_ip
 }
-
 output "nat_private_ip" {
   description = "Private IP of NAT instance — used in route table"
   value       = aws_instance.nat.private_ip
 }
-
 output "vpc_id" {
   description = "VPC ID"
   value       = aws_vpc.main.id
 }
-
 output "public_subnet_id" {
   description = "Public subnet ID"
   value       = aws_subnet.public.id
 }
-
 output "private_subnet_id" {
   description = "Private subnet ID"
   value       = aws_subnet.private.id
 }
-
 output "aws_region" {
   description = "AWS region"
   value       = var.aws_region
 }
-
 output "project_name" {
   description = "Project name prefix"
   value       = var.project_name
 }
-
 output "account_id" {
   description = "AWS Account ID"
   value       = local.account_id
 }
-
 output "ssh_command" {
   description = "SSH command to connect to Bastion"
   value       = "ssh -i ~/.ssh/id_ed25519_shimonvault ec2-user@${aws_instance.bastion.public_ip}"
 }
-
 output "alb_listener_arn" {
   description = "ARN of the ALB HTTP listener (used by CD pipeline for blue/green switch)"
   value       = aws_lb_listener.app.arn
+}
+output "app_blue_private_ip" {
+  description = "Private IP of the blue App EC2 — used by update_ssh_config.sh for ProxyJump access"
+  value       = aws_instance.app_blue.private_ip
+}
+
+output "sns_topic_infra_alert" {
+  description = "ARN of the infra-alert SNS topic — used to check SNS subscription status"
+  value       = aws_sns_topic.infra_alert.arn
 }

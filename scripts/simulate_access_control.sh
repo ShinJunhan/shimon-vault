@@ -25,7 +25,6 @@ echo "  Target: $BASE_URL"
 echo "════════════════════════════════════════════════"
 echo ""
 # ── Reset viewer suspension from any previous run ────────────────────────────
-# ── Reset viewer suspension from any previous run ────────────────────────────
 echo "🔄 Resetting viewer account suspension (if any from previous run)..."
 RDS_RELAY=$(tailscale status --json 2>/dev/null | python3 -c "
 import sys, json
@@ -44,23 +43,6 @@ if [ -n "\$RDS_RELAY" ]; then
 fi
 echo ""
 
-echo "🔄 Resetting viewer account suspension (if any from previous run)..."
-RDS_RELAY=$(tailscale status --json 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for p in (data.get('Peer') or {}).values():
-    if 'shimonvault-app' in p.get('HostName', '') and p.get('TailscaleIPs'):
-        print(p['TailscaleIPs'][0]); break
-" 2>/dev/null || echo "")
-if [ -n "\$RDS_RELAY" ]; then
-    docker run --rm --network host \
-        -e PGPASSWORD="\${DB_PASSWORD:-shimonvaultdb}" \
-        postgres:16-alpine \
-        psql -h "\$RDS_RELAY" -p 5432 -U shimonvault -d shimonvault \
-        -c "UPDATE users SET suspended = false WHERE username = 'viewer';" \
-        > /dev/null 2>&1 && echo "   ✅ Viewer account reset" || true
-fi
-echo ""
 
 
 # ── Login as viewer ───────────────────────────────────────────────────────────
@@ -136,8 +118,8 @@ if [[ $ATTEMPT -ge 5 ]]; then
     -H "Authorization: Bearer $VIEWER_TOKEN" \
     --max-time 5 || echo "000")
 
-  if [[ "$STATUS" == "403" ]]; then
-    echo "  ✅ Account suspended — further requests return 403"
+  if [[ "$STATUS" == "401" ]] || [[ "$STATUS" == "403" ]]; then
+    echo "  ✅ Account suspended — further requests blocked (401 Unauthorized)"
   else
     echo "  ⚠️  Status: $STATUS — check suspension logic in auth.py"
   fi

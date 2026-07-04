@@ -1,23 +1,26 @@
 -- ─────────────────────────────────────────────────────────────
 -- ShimonVault — Seed Data
--- Demo users for presentation. Passwords are bcrypt hashes.
+-- Demo users for presentation.
+-- Passwords are SHA-256-then-bcrypt hashed, matching auth.py's
+-- hash_password() exactly (SHA-256 pre-hash works around bcrypt's
+-- 72-byte input limit, then bcrypt hashes that digest).
 -- Plain passwords: admin=Admin1234!, editor=Edit5678!, viewer=View9012!
 -- ─────────────────────────────────────────────────────────────
 
-INSERT INTO users (id, email, username, password_hash, role) VALUES
+INSERT INTO users (id, email, username, hashed_pw, role, is_active, suspended) VALUES
   ('00000000-0000-0000-0000-000000000001',
-   'admin@shimonvault.local',
+   'admin@shimonvault.com',
    'admin',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewwVQQi.dILFuPqK',  -- Admin1234!
-   'admin'),
+   '$2b$12$6JLE0FMUAqxJPVG0asQumePimHXf7py669pjlk789McpGc8zvWcIC',  -- Admin1234!
+   'ADMIN', true, false),
   ('00000000-0000-0000-0000-000000000002',
-   'editor@shimonvault.local',
+   'editor@shimonvault.com',
    'editor',
-   '$2b$12$xN5k1QeENR.mY1CZ9BqkHe9E3H0Jfq4kFY5m8dEqk9VdxdBbRzIfy',  -- Edit5678!
-   'editor'),
+   '$2b$12$18C5deO0IEASNyN1OTVSTe6jJRBkaJ.DidcWzA58OFfC3JcLEVFK.',  -- Edit5678!
+   'EDITOR', true, false),
   ('00000000-0000-0000-0000-000000000003',
-   'viewer@shimonvault.local',
+   'viewer@shimonvault.com',
    'viewer',
-   '$2b$12$8Ow3s5z2K9PnmQ1XLJFiOuFxPxhKEKZvnHuFLJJkOH8zIkfbhXFCa',  -- View9012!
-   'viewer')
+   '$2b$12$Jp2px1Tq74hPsJliSovWdO5pEb9piygmDAq387HMCRHm1ErjGi7z6',  -- View9012!
+   'VIEWER', true, false)
 ON CONFLICT DO NOTHING;

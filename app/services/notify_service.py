@@ -8,6 +8,12 @@ A failed notification never crashes the calling request handler.
 This is the app-side equivalent of lambda/shared/notification.py.
 They are separate files because Lambda and the app run in different
 environments with different import paths.
+
+CHANGE (admin/demo console):
+  notify_all() now RETURNS a per-channel delivery status dict so the
+  web app can show a truthful toast ("Slack delivered, Telegram delivered").
+  It still never raises — existing callers that ignore the return value
+  (e.g. auth_router credential-stuffing alerts) keep working unchanged.
 """
 
 import json
@@ -51,20 +57,40 @@ def notify_telegram(message: str) -> None:
             raise RuntimeError(f"Telegram returned {resp.status}")
 
 
-def notify_all(message: str) -> None:
-    """Send to all notification channels. Never fail silently."""
-    errors = []
+def notify_all(message: str) -> dict:
+    """
+    Send to all notification channels. Never fail silently, never raise.
+
+    Returns a status dict the web app can turn into a toast:
+        {
+          "slack":    {"ok": True,  "error": None},
+          "telegram": {"ok": False, "error": "Telegram returned 401"},
+          "all_ok": False,
+        }
+    """
+    status = {
+        "slack": {"ok": False, "error": None},
+        "telegram": {"ok": False, "error": None},
+    }
+
     try:
         notify_slack(message)
+        status["slack"]["ok"] = True
     except Exception as exc:
-        errors.append(f"Slack failed: {exc}")
+        status["slack"]["error"] = str(exc)
         print(f"[notify_all] Slack error: {exc}")
+
     try:
         notify_telegram(message)
+        status["telegram"]["ok"] = True
     except Exception as exc:
-        errors.append(f"Telegram failed: {exc}")
+        status["telegram"]["error"] = str(exc)
         print(f"[notify_all] Telegram error: {exc}")
-    if errors:
+
+    status["all_ok"] = status["slack"]["ok"] and status["telegram"]["ok"]
+    if not status["all_ok"]:
         # Log but do NOT raise — a failed notification must never
         # crash a user-facing request or a Lambda function
-        print(f"[notify_all] Non-fatal errors: {errors}")
+        print(f"[notify_all] Non-fatal notification errors: {status}")
+
+    return status

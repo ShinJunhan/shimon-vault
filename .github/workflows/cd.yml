@@ -61,10 +61,12 @@ jobs:
 
       # ── 5. Build and push :green image ───────────────────────────────────────
       # The green EC2 boots with container_tag="green", so it pulls THIS image.
+      # context: . (repo root) so the Dockerfile can COPY both frontend/ and app/.
+      # The frontend-builder stage runs `npm run build` and the result is baked in.
       - name: Build and push :green Docker image
         uses: docker/build-push-action@v6
         with:
-          context: app/
+          context: .
           file: app/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true

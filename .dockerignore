@@ -1,0 +1,79 @@
+# shimon-vault/.dockerignore (repo root)
+# Build context is now the repo root — this file replaces app/.dockerignore.
+
+# ── Python ──────────────────────────────────────────────
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── Env / secrets ───────────────────────────────────────
+.env
+.env.*
+**/.env
+**/.env.*
+
+# ── Logs ────────────────────────────────────────────────
+*.log
+
+# ── Git ─────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Frontend build artifacts (rebuilt fresh inside the image) ──
+frontend/node_modules/
+frontend/dist/
+
+# ── Terraform (never needs to be in the image) ─────────
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/terraform.tfvars
+terraform/.terraform
+terraform/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+terraform/terraform.tfvars
+
+# ── Tests (not needed at runtime) ──────────────────────
+tests/
+app/tests/
+
+# ── Misc build/output folders not needed in image ─────
+build/
+
+# Editor / OS noise
+.DS_Store
+.idea
+.vscode
+*.log
+
+#frontend
+node_modules/
+dist/
+.env
+
+# Git / CI
+.git
+.gitignore
+.github
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+.coverage
+htmlcov
+app/.venv
+app/venv
+.venv
+venv

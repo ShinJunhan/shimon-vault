@@ -26,7 +26,11 @@ _s3 = None
 def _get_s3():
     global _s3
     if _s3 is None:
-        _s3 = boto3.client("s3", region_name=config.AWS_REGION)
+        _s3 = boto3.client(
+            "s3",
+            region_name=config.AWS_REGION,
+            endpoint_url=f"https://s3.{config.AWS_REGION}.amazonaws.com",
+        )
     return _s3
 
 

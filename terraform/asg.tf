@@ -63,7 +63,7 @@ resource "aws_launch_template" "app" {
     rds_port     = aws_db_instance.main.port
     db_name      = var.db_name
     read_db_host = var.replica_tailscale_ip
-
+    prometheus_url = var.prometheus_url
     jwt_secret_key = var.jwt_secret_key
 
     aws_region     = var.aws_region

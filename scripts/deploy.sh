@@ -57,6 +57,36 @@ else
 fi
 echo ""
 
+# ── 0.5. Auto-detect proj-mgmt's own Tailscale IP for Prometheus ─────────────
+# This machine's Tailscale IP is usually stable, but "usually" isn't a
+# permanent-fix guarantee — asking Tailscale directly every session costs
+# nothing and removes the risk entirely, same principle as the public IP
+# check above.
+echo "0.5️⃣  Checking proj-mgmt's Tailscale IP..."
+PROM_IP=$(tailscale ip -4 2>/dev/null || echo "")
+
+if [ -z "$PROM_IP" ]; then
+    echo "   ⚠️  Could not detect Tailscale IP (is tailscaled running?) — skipping"
+else
+    PROM_URL="http://${PROM_IP}:9090"
+    STORED_PROM_URL=$(grep '^prometheus_url' "$TFVARS" \
+        | sed 's/.*=\s*"\(.*\)".*/\1/' \
+        | tr -d '[:space:]' \
+        || echo "")
+
+    if [ "$STORED_PROM_URL" = "$PROM_URL" ]; then
+        echo "   ✅ Prometheus URL unchanged: $PROM_URL"
+    elif grep -q '^prometheus_url' "$TFVARS" 2>/dev/null; then
+        echo "   🔄 Prometheus URL changed: $STORED_PROM_URL → $PROM_URL"
+        sed -i "s|prometheus_url\s*=\s*\".*\"|prometheus_url = \"$PROM_URL\"|" "$TFVARS"
+        echo "   ✅ terraform.tfvars updated → prometheus_url = \"$PROM_URL\""
+    else
+        echo "   ➕ Adding prometheus_url to terraform.tfvars: $PROM_URL"
+        echo "prometheus_url = \"$PROM_URL\"" >> "$TFVARS"
+    fi
+fi
+echo ""
+
 # ── 1. Terraform init ─────────────────────────────────────────────────────────
 cd "$TF_DIR"
 echo "1️⃣  terraform init..."
@@ -105,16 +135,20 @@ echo ""
 # ── 5.5: Update Cloudflare DNS to point to current ALB ────────────────────────
 # ALB DNS name changes on every terraform apply (AWS appends a new random
 # suffix each time the load balancer is recreated). Without this step,
-# portfolio.cshimomoto.com silently breaks after every fresh deploy.
-echo "🌐 Updating Cloudflare DNS (portfolio.cshimomoto.com → $ALB_DNS)..."
+# shimonvault.cshimomoto.com silently breaks after every fresh deploy.
+#
+# NOTE: shimonvault.cshimomoto.com is the LIVE APP domain (points to the ALB).
+# portfolio.cshimomoto.com is the separate GitHub Pages landing page and must
+# NEVER be touched by this script — it doesn't change per session.
+echo "🌐 Updating Cloudflare DNS (shimonvault.cshimomoto.com → $ALB_DNS)..."
 CF_TOKEN=$(grep cloudflare_api_token "$TF_DIR/terraform.tfvars" | cut -d'"' -f2)
 CF_ZONE_ID="9552af6942ec853c0bc814e9689795aa"
-CF_RECORD_ID="a80065b4abff38457f85f2da79e06e3b"
+CF_RECORD_ID="be7aa8c36649bf6f6b6d6902413dc462"
 if [ -n "$CF_TOKEN" ]; then
   CF_RESULT=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$CF_RECORD_ID" \
     -H "Authorization: Bearer $CF_TOKEN" \
     -H "Content-Type: application/json" \
-    --data "{\"type\":\"CNAME\",\"name\":\"portfolio.cshimomoto.com\",\"content\":\"$ALB_DNS\",\"proxied\":false,\"ttl\":1}")
+    --data "{\"type\":\"CNAME\",\"name\":\"shimonvault.cshimomoto.com\",\"content\":\"$ALB_DNS\",\"proxied\":false,\"ttl\":1}")
   CF_SUCCESS=$(echo "$CF_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
   if [ "$CF_SUCCESS" = "True" ]; then
     echo "   ✅ Cloudflare DNS updated successfully"
@@ -153,6 +187,7 @@ if [ "$BASTION_READY" = "false" ]; then
     echo "   Current IP detected: ${CURRENT_IP:-unknown}"
 fi
 echo ""
+
 
 # ── 7. Wait for app healthy ───────────────────────────────────────────────────
 echo "5️⃣  Waiting for app to become healthy (up to 4 minutes)..."
@@ -217,6 +252,50 @@ else
     fi
 fi
 
+echo ""
+
+
+# ── 8.5. Seed demo users (idempotent — safe to run every session) ────────────
+# seed.sql uses ON CONFLICT DO NOTHING with fixed UUIDs, so re-running this on
+# an already-seeded database is a harmless no-op. This MUST run after the ALB
+# health check confirms HTTP 200, because that's the proof init_db() already
+# created the schema — running this any earlier means the users table doesn't
+# exist yet, and -v ON_ERROR_STOP=1 below is what makes that failure actually
+# visible instead of psql silently exiting 0 on a script with SQL errors in it.
+echo "🌱 Seeding demo users..."
+RDS_ENDPOINT=$(terraform -chdir="$TF_DIR" output -raw rds_endpoint)
+DB_NAME_FOR_SEED=$(grep '^db_name' "$TFVARS" | cut -d'"' -f2 || echo "shimonvault")
+DB_USER_FOR_SEED=$(grep '^db_username' "$TFVARS" | cut -d'"' -f2 || echo "shimonvault")
+DB_PASSWORD_FOR_SEED=$(grep '^db_password' "$TFVARS" | cut -d'"' -f2 || echo "")
+
+if [ -z "$DB_PASSWORD_FOR_SEED" ]; then
+  echo "   ⚠️  db_password not found in terraform.tfvars — skipping seed"
+else
+  ssh -F ~/.ssh/shimonvault_config -N -L 5434:"$RDS_ENDPOINT":5432 shimonvault-bastion &
+  TUNNEL_PID=$!
+  SEED_OK=false
+  for i in $(seq 1 6); do
+    sleep 5
+    if PGPASSWORD="$DB_PASSWORD_FOR_SEED" psql -v ON_ERROR_STOP=1 -h localhost -p 5434 \
+         -U "$DB_USER_FOR_SEED" -d "$DB_NAME_FOR_SEED" \
+         -f "$REPO_ROOT/db/seed.sql" >/tmp/shimonvault_seed.log 2>&1; then
+      SEED_OK=true
+      break
+    fi
+  done
+  kill "$TUNNEL_PID" 2>/dev/null || true
+  wait "$TUNNEL_PID" 2>/dev/null || true
+
+  if [ "$SEED_OK" = "true" ]; then
+    echo "   ✅ Demo users ready (admin@shimonvault.com / editor@shimonvault.com / viewer@shimonvault.com)"
+  else
+    echo "   ⚠️  Seeding failed — run manually:"
+    echo "      ssh -F ~/.ssh/shimonvault_config -L 5434:$RDS_ENDPOINT:5432 shimonvault-bastion"
+    echo "      psql -h localhost -p 5434 -U $DB_USER_FOR_SEED -d $DB_NAME_FOR_SEED -f db/seed.sql"
+    echo "   Actual error:"
+    tail -20 /tmp/shimonvault_seed.log 2>/dev/null | sed 's/^/      /'
+  fi
+fi
 echo ""
 
 # ── 9. Update Ansible SSH config ──────────────────────────────────────────────

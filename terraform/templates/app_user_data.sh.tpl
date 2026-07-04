@@ -136,6 +136,7 @@ ENVIRONMENT=production
 
 WRITE_DB_URL=postgresql+psycopg2://${db_user}:${db_password}@${rds_endpoint}:${rds_port}/${db_name}
 READ_DB_URL=postgresql+psycopg2://${db_user}:${db_password}@${read_db_host}:5433/${db_name}
+PROMETHEUS_URL=${prometheus_url}
 
 JWT_SECRET_KEY=${jwt_secret_key}
 JWT_ALGORITHM=HS256
@@ -254,6 +255,7 @@ services:
       TELEGRAM_BOT_TOKEN: "$${TELEGRAM_BOT_TOKEN}"
       TELEGRAM_CHAT_ID: "$${TELEGRAM_CHAT_ID}"
       APP_SECURITY_GROUP_ID: "$${APP_SECURITY_GROUP_ID}"
+      PROMETHEUS_URL: "$${PROMETHEUS_URL}"
     deploy:
       replicas: 1
       restart_policy:

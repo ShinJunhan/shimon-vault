@@ -1,1 +1,9 @@
-[{"targets": ["100.105.123.52:8000"], "labels": {"instance": "shimonvault-app-blue", "role": "app"}}]
+[
+  {
+    "targets": [":8000"],
+    "labels": {
+      "instance": "shimonvault-app-blue",
+      "role": "app"
+    }
+  }
+]
