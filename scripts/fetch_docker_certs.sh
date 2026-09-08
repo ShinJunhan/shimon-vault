@@ -10,19 +10,30 @@ COMPOSE_FILE="$HOME/shimon-vault/monitoring/docker-compose.yml"
 PORTAINER_URL="http://localhost:9000"
 PORTAINER_PASSWORD="${PORTAINER_ADMIN_PASSWORD:-shimonvault2026}"
 
+# Jump through the bastion WITHOUT relying on an ssh-agent.
+#
+# WHY NOT -o ProxyJump=: ssh spawns a SEPARATE process for the jump host, and
+# that process does NOT inherit this command's -i. It authenticates from the
+# agent instead, so `ssh -i "$KEY" -o ProxyJump=...` fails with
+# "Permission denied (publickey)" whenever no agent happens to be loaded.
+# deploy.sh masks this by running ssh-add first (step 10); run this script on
+# its own and it dies before fetching a single cert. ProxyCommand is explicit
+# about the key for BOTH hops, so the script works standalone.
+JUMP="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %h:%p ec2-user@${BASTION_IP}"
+
 echo "📜 Fetching Docker TLS certs from EC2..."
 mkdir -p "$CERTS_DIR"
 
 scp -i "$KEY" \
     -o StrictHostKeyChecking=no \
-    -o ProxyJump="ec2-user@${BASTION_IP}" \
+    -o ProxyCommand="$JUMP" \
     "ec2-user@${BLUE_IP}:/opt/shimonvault/docker-certs/*" \
     "$CERTS_DIR/"
 echo "✅ Certs saved to $CERTS_DIR"
 
 TAILSCALE_IP=$(ssh -i "$KEY" \
     -o StrictHostKeyChecking=no \
-    -o ProxyJump="ec2-user@${BASTION_IP}" \
+    -o ProxyCommand="$JUMP" \
     "ec2-user@${BLUE_IP}" \
     "tailscale ip -4 2>/dev/null || echo ''" 2>/dev/null || echo "")
 
@@ -47,7 +58,7 @@ TARGETS_FILE="$(dirname "$0")/../monitoring/prometheus/targets/fastapi_app.json"
 cat > "$TARGETS_FILE" << TARGETS_EOF
 [
   {
-    "targets": [":8000"],
+    "targets": ["$TAILSCALE_IP:8000"],
     "labels": {
       "instance": "shimonvault-app-blue",
       "role": "app"
@@ -62,7 +73,7 @@ EC2_NODES_FILE="$(dirname "$0")/../monitoring/prometheus/targets/ec2_nodes.json"
 cat > "$EC2_NODES_FILE" << NODES_EOF
 [
   {
-    "targets": [":9100"],
+    "targets": ["$TAILSCALE_IP:9100"],
     "labels": {
       "instance": "shimonvault-app-blue",
       "job": "ec2-nodes"

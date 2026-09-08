@@ -1,6 +1,6 @@
 [
   {
-    "targets": [":8000"],
+    "targets": ["100.93.253.124:8000"],
     "labels": {
       "instance": "shimonvault-app-blue",
       "role": "app"

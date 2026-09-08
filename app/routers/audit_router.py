@@ -11,12 +11,12 @@ These endpoints feed the Grafana JSON API plugin for the live dashboard.
 """
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from fastapi import APIRouter, Depends
 
 import config
 from auth import get_current_user, require_role
-from models import User, UserRole
+from models import AuditEventType, User, UserRole
 
 router = APIRouter()
 
@@ -35,6 +35,41 @@ def _get_incidents_table():
     return dynamodb.Table(config.DYNAMODB_INCIDENTS_TABLE)
 
 
+def _recent_events(table, limit: int):
+    """
+    Return the `limit` most recent audit events, newest first.
+
+    WHY NOT table.scan(Limit=n):
+      scan(Limit=n) returns the first n items DynamoDB happens to walk — an
+      arbitrary page, not the newest n. Sorting that page by created_at yields
+      "the newest of a random sample", so a burst of attack traffic could be
+      absent from the feed entirely while older keep-alive rows showed. That is
+      exactly what made the live demo feed unreliable.
+
+    WHY THIS WORKS:
+      The base table is keyed (id=uuid4, created_at), so its partition key is
+      random and cannot be range-queried by time. The event_type-index GSI is
+      keyed (event_type, created_at), so per event type we CAN ask DynamoDB for
+      the newest rows directly — ScanIndexForward=False walks the sort key
+      descending. AuditEventType is a small closed set, so taking the newest
+      `limit` per type and merging is guaranteed to contain the true newest
+      `limit` overall: any event in the global top-N is also in its own type's
+      top-N.
+    """
+    collected = []
+    for event_type in AuditEventType:
+        response = table.query(
+            IndexName="event_type-index",
+            KeyConditionExpression=Key("event_type").eq(event_type.value),
+            ScanIndexForward=False,   # newest first
+            Limit=limit,
+        )
+        collected.extend(response.get("Items", []))
+
+    collected.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return collected[:limit]
+
+
 @router.get("/feed")
 def get_audit_feed(
     limit: int = 100,
@@ -47,12 +82,7 @@ def get_audit_feed(
     """
     table = _get_audit_table()
     try:
-        response = table.scan(Limit=limit)
-        items = sorted(
-            response.get("Items", []),
-            key=lambda x: x.get("created_at", ""),
-            reverse=True,
-        )
+        items = _recent_events(table, limit)
     except Exception as exc:
         print(f"[audit_router] DynamoDB unavailable in get_audit_feed: {exc}")
         items = []

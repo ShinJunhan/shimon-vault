@@ -14,6 +14,10 @@
 # Usage: bash scripts/setup_replica.sh
 
 set -e
+# pipefail: without it a failing `grep ... | cut ...` still exits 0, so the
+# ${VAR:-default} fallbacks below resolve to an EMPTY string instead of the
+# default — which is how an empty password could reach ALTER ROLE.
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$(cd "$SCRIPT_DIR/../terraform" && pwd)"
@@ -21,7 +25,21 @@ TF_DIR="$(cd "$SCRIPT_DIR/../terraform" && pwd)"
 RDS_ENDPOINT=$(cd "$TF_DIR" && terraform output -raw rds_endpoint)
 DB_NAME="${DB_NAME:-shimonvault}"
 DB_USER="${DB_USER:-shimonvault}"
-DB_PASSWORD="${DB_PASSWORD:-$(grep DB_PASSWORD "$SCRIPT_DIR/../app/.env" | cut -d= -f2)}"
+# `|| true` so a missing/incomplete app/.env does NOT abort here under
+# `set -e` + pipefail — the explicit guard below gives a far better message.
+DB_PASSWORD="${DB_PASSWORD:-$(grep DB_PASSWORD "$SCRIPT_DIR/../app/.env" 2>/dev/null | cut -d= -f2 || true)}"
+
+# Refuse to continue without a real password. Every psql call below authenticates
+# with it, and one of them runs `ALTER ROLE replicator WITH LOGIN PASSWORD '...'`
+# — an empty value there would silently give the replication role a blank
+# password. deploy.sh guards the same value before seeding; this path must too.
+if [ -z "${DB_PASSWORD:-}" ]; then
+  echo "   ❌ DB_PASSWORD is empty."
+  echo "      Pass it in:  DB_PASSWORD=... bash scripts/setup_replica.sh"
+  echo "      or make sure app/.env contains DB_PASSWORD= (run scripts/generate_env.sh)."
+  exit 1
+fi
+
 REPLICA_HOST="100.87.141.40"   # proj-ubuntu01 Tailscale IP — stable
 REPLICA_PORT=5433
 

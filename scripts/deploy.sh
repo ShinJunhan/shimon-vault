@@ -21,6 +21,19 @@ TF_DIR="$REPO_ROOT/terraform"
 ANSIBLE_DIR="$REPO_ROOT/ansible"
 TFVARS="$TF_DIR/terraform.tfvars"
 
+# ── Failure tracking ──────────────────────────────────────────────────────────
+# Most steps below are deliberately non-fatal (guarded with `|| true` or an
+# if/else) so one broken step doesn't abandon the rest of the bring-up. The cost
+# is that the script used to exit 0 even when the app was down, seeding failed
+# and replication failed — so the exit code said nothing. WARNINGS records each
+# degraded step and the script exits non-zero at the end, which makes the run
+# honest without making it brittle.
+WARNINGS=()
+warn() {
+    WARNINGS+=("$1")
+    echo "   ⚠️  $1"
+}
+
 echo "🚀 ShimonVault — Starting deployment..."
 echo ""
 
@@ -158,7 +171,7 @@ if [ -n "$CF_TOKEN" ]; then
   if [ "$CF_SUCCESS" = "True" ]; then
     echo "   ✅ Cloudflare DNS updated successfully"
   else
-    echo "   ⚠️  Cloudflare DNS update failed — check manually: $CF_RESULT"
+    warn "Cloudflare DNS update failed — check manually: $CF_RESULT"
   fi
 else
   echo "   ⚠️  No cloudflare_api_token found in terraform.tfvars — skipping DNS update"
@@ -186,7 +199,7 @@ for i in $(seq 1 18); do  # 18 × 10s = 3 minutes max
 done
 
 if [ "$BASTION_READY" = "false" ]; then
-    echo "   ⚠️  Bastion SSH not ready after 3 minutes"
+    warn "Bastion SSH not ready after 3 minutes"
     echo "   Check: ssh -i ~/.ssh/id_ed25519_shimonvault ec2-user@$BASTION_IP"
     echo "   Possible cause: your_ip_cidr in terraform.tfvars doesn't match your current IP"
     echo "   Current IP detected: ${CURRENT_IP:-unknown}"
@@ -241,7 +254,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
     echo "   Health:   http://$ALB_DNS/health"
     echo "   API docs: http://$ALB_DNS/docs"
 else
-    echo "   ⚠️  ALB returned HTTP $HTTP_STATUS"
+    warn "ALB returned HTTP $HTTP_STATUS — app is NOT serving"
     aws elbv2 describe-target-health \
         --target-group-arn "$BLUE_TG_ARN" \
         --region "$AWS_REGION" \
@@ -294,7 +307,7 @@ else
   if [ "$SEED_OK" = "true" ]; then
     echo "   ✅ Demo users ready (admin@shimonvault.com / editor@shimonvault.com / viewer@shimonvault.com)"
   else
-    echo "   ⚠️  Seeding failed — run manually:"
+    warn "Seeding failed — run manually:"
     echo "      ssh -F ~/.ssh/shimonvault_config -L 5434:$RDS_ENDPOINT:5432 shimonvault-bastion"
     echo "      psql -h localhost -p 5434 -U $DB_USER_FOR_SEED -d $DB_NAME_FOR_SEED -f db/seed.sql"
     echo "   Actual error:"
@@ -348,7 +361,7 @@ export DB_USER=$(grep "^db_username" "$REPO_ROOT/terraform/terraform.tfvars" | c
 export DB_PASSWORD=$(grep "^db_password" "$REPO_ROOT/terraform/terraform.tfvars" | cut -d'"' -f2 || echo "")
 bash "$REPO_ROOT/scripts/setup_replica.sh" && \
     echo "   ✅ Replication configured" || \
-    echo "   ⚠️  Replication setup failed — run manually: bash scripts/setup_replica.sh"
+    warn "Replication setup failed — run manually: bash scripts/setup_replica.sh"
 echo ""
 
 # ── 13. Run Ansible verify ────────────────────────────────────────────────────
@@ -363,7 +376,7 @@ echo "1️⃣1️⃣  Fetching Docker TLS certs → updating Portainer..."
 if [ "$BLUE_IP" != "unknown" ]; then
     bash "$REPO_ROOT/scripts/fetch_docker_certs.sh" "$BASTION_IP" "$BLUE_IP" && \
         echo "   ✅ Portainer ready" || \
-        echo "   ⚠️  Cert fetch failed — retry: bash scripts/fetch_docker_certs.sh $BASTION_IP $BLUE_IP"
+        warn "Cert fetch failed — retry: bash scripts/fetch_docker_certs.sh $BASTION_IP $BLUE_IP"
 else
     echo "   ⚠️  Blue EC2 IP unknown — skipping"
 fi
@@ -373,7 +386,7 @@ echo ""
 echo "1️⃣2️⃣  Reloading Prometheus..."
 curl -s -X POST http://localhost:9090/-/reload 2>/dev/null && \
     echo "   ✅ Prometheus reloaded" || \
-    echo "   ⚠️  Prometheus reload failed (check docker-compose --web.enable-lifecycle)"
+    warn "Prometheus reload failed (check docker-compose --web.enable-lifecycle)"
 echo ""
 
 echo "🎉 Deployment complete!"
@@ -397,7 +410,9 @@ echo ""
 # and the next plain deploy.sh would then tear green back down. So only enable
 # this when you actually want to roll out a NEW app version on top of the infra:
 #   SHIP=true bash scripts/deploy.sh
-# (For day-to-day code deploys, prefer:  bash scripts/ship.sh "your message")
+# (For day-to-day code deploys: commit and push to main — cd.yml runs on push.
+#  There is no scripts/ship.sh; this line used to reference one that was never
+#  written, which sent people looking for a file that does not exist.)
 if [ "${SHIP:-false}" = "true" ]; then
     echo ""
     echo "🚢  SHIP=true → triggering GitHub Actions CD pipeline..."
@@ -409,4 +424,17 @@ if [ "${SHIP:-false}" = "true" ]; then
     else
         echo "   ⚠️  GitHub CLI (gh) not installed. Either install it, or just: git push origin main"
     fi
+fi
+
+# ── Exit status ───────────────────────────────────────────────────────────────
+echo ""
+if [ ${#WARNINGS[@]} -eq 0 ]; then
+    echo "✅ Deployment finished with no degraded steps."
+else
+    echo "⚠️  Deployment finished with ${#WARNINGS[@]} degraded step(s):"
+    for w in "${WARNINGS[@]}"; do echo "   • $w"; done
+    echo ""
+    echo "   The infrastructure may still be partly usable, but do NOT treat this"
+    echo "   run as a success — check each item above before demoing or recording."
+    exit 1
 fi

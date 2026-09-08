@@ -28,6 +28,21 @@ from datetime import datetime, timezone
 # Paths that are too noisy to log every time
 _SKIP_PATHS = {"/health", "/metrics", "/favicon.ico"}
 
+# Read-only endpoints the admin console polls on a timer to draw itself. A
+# successful poll is the observer watching, not something a person did, and at
+# 4 requests every 4 seconds they bury the real security signal: the audit trail
+# fills with ~40 self-generated rows a minute, so an attack burst is pushed out
+# of the recent feed within a couple of minutes. Successful polls are therefore
+# not audited. FAILED ones still are — a 401/403/429 here means someone is
+# hitting admin telemetry without the right token, which is exactly the kind of
+# event this trail exists to capture.
+_OBSERVER_PATHS = {
+    "/audit/feed",
+    "/admin/metrics/summary",
+    "/admin/metrics/infra",
+    "/admin/metrics/timeseries",
+}
+
 # After this many access-control violations (403s) by one user, suspend them.
 _SUSPEND_THRESHOLD = 5
 _violation_counts: dict[str, int] = {}
@@ -140,6 +155,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         # Determine severity based on HTTP status
         status_code = response.status_code
+        # Drop successful console self-polling before it reaches the trail.
+        if request.url.path in _OBSERVER_PATHS and status_code < 400:
+            return response
         if status_code >= 500:
             severity = "critical"
         elif status_code in (401, 403, 429):
