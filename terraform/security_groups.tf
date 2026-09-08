@@ -36,7 +36,16 @@ resource "aws_security_group" "alb" {
 
 # ─────────────────────────────────────────────
 # Security Group: App EC2 (blue + green share this SG)
-# Allows: traffic from ALB only (not from internet directly)
+# Allows: traffic from ALB, SSH from bastion, node_exporter scrape,
+# and Docker TLS / NFS / RDS-relay traffic from the Tailscale mesh.
+#
+# NOTE: all rules for this SG live inline, in this one block, on purpose.
+# Do NOT add separate aws_security_group_rule resources targeting this SG
+# elsewhere in the codebase — mixing inline ingress {} blocks with standalone
+# aws_security_group_rule resources on the same SG causes Terraform to treat
+# the inline set as authoritative and strip out the standalone rules on
+# every apply. (This bit us once already — see git history around
+# security_group_rule_rds_relay.tf, now deleted.)
 # ─────────────────────────────────────────────
 resource "aws_security_group" "app" {
   name        = "${var.project_name}-app-sg"
@@ -64,7 +73,31 @@ resource "aws_security_group" "app" {
     from_port   = 9100
     to_port     = 9100
     protocol    = "tcp"
-    cidr_blocks = ["100.64.0.0/10"]  # Tailscale CGNAT range
+    cidr_blocks = ["100.64.0.0/10"] # Tailscale CGNAT range
+  }
+
+  ingress {
+    description = "Docker TLS TCP - Portainer on proj-mgmt via Tailscale only"
+    from_port   = 2376
+    to_port     = 2376
+    protocol    = "tcp"
+    cidr_blocks = ["100.64.0.0/10"] # Tailscale CGNAT range
+  }
+
+  ingress {
+    description = "NFS from Tailscale - proj-ubuntu01 shared storage"
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "tcp"
+    cidr_blocks = ["100.64.0.0/10"]
+  }
+
+  ingress {
+    description = "RDS relay (socat) over Tailscale for PostgreSQL replication"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["100.64.0.0/10"]
   }
 
   egress {
@@ -168,27 +201,4 @@ resource "aws_security_group" "nat" {
   }
 
   tags = { Name = "${var.project_name}-nat-sg" }
-}
-# Add to terraform/security_groups.tf
-
-# Docker TLS TCP — only from Tailscale CGNAT range (proj-mgmt)
-resource "aws_security_group_rule" "app_docker_tls" {
-  type              = "ingress"
-  from_port         = 2376
-  to_port           = 2376
-  protocol          = "tcp"
-  cidr_blocks       = ["100.64.0.0/10"]  # Tailscale CGNAT range only
-  security_group_id = aws_security_group.app.id
-  description       = "Docker TLS TCP - Portainer on proj-mgmt via Tailscale only"
-}
-
-# NFS from Tailscale only (proj-ubuntu01 NFS server)
-resource "aws_security_group_rule" "app_nfs" {
-  type              = "ingress"
-  from_port         = 2049
-  to_port           = 2049
-  protocol          = "tcp"
-  cidr_blocks       = ["100.64.0.0/10"]
-  security_group_id = aws_security_group.app.id
-  description       = "NFS from Tailscale - proj-ubuntu01 shared storage"
 }
