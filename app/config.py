@@ -83,7 +83,7 @@ PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 # every /demo/* endpoint return 403 (safe default for any "real" deployment).
 DEMO_ENABLED = os.getenv("DEMO_ENABLED", "true").lower() == "true"
 # Public base URL the in-app attack runner targets. In deployment set this to
-# the live app URL (https://shimonvault.cshimomoto.com) — never hardcode.
+# the live app URL (https://shimonvault.junhanshin.com) — never hardcode.
 DEMO_BASE_URL = os.getenv("DEMO_BASE_URL", "http://localhost:8000")
 # Fake attacker IP shown in the audit log during demos. 203.0.113.0/24 is the
 # RFC 5737 TEST-NET-3 documentation range — not a real address.

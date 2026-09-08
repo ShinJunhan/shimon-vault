@@ -32,6 +32,10 @@ jobs:
       TF_VAR_onprem_tailscale_ip: ${{ secrets.ONPREM_TAILSCALE_IP }}
       TF_VAR_dockerhub_token:     ${{ secrets.DOCKERHUB_TOKEN }}
       TF_VAR_ssh_public_key:      ${{ secrets.SSH_PUBLIC_KEY }}
+      # Needed by the cloudflare provider in terraform/acm.tf, which writes the
+      # ACM DNS-validation record. Without it the provider authenticates with an
+      # empty token and the certificate never validates.
+      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────

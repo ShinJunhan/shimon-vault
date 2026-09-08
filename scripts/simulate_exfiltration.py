@@ -14,7 +14,7 @@ Usage:
 
 Example:
     python3 scripts/simulate_exfiltration.py \
-        --base-url https://shimonvault.cshimomoto.com \
+        --base-url https://shimonvault.junhanshin.com \
         --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 """
 

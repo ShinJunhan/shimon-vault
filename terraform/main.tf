@@ -8,6 +8,13 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    # Used by acm.tf to publish the ACM DNS-validation records into the
+    # Cloudflare zone. Pinned to 4.x — the 5.x provider renamed
+    # cloudflare_record to cloudflare_dns_record.
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
+    }
   }
 
   # Remote state — this S3 bucket and DynamoDB table must be created
@@ -20,6 +27,10 @@ terraform {
     dynamodb_table = "shimonvault-tfstate-lock"
     encrypt        = true
   }
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }
 
 provider "aws" {
@@ -60,9 +71,15 @@ data "aws_ami" "amazon_linux" {
 }
 
 locals {
-  account_id  = data.aws_caller_identity.current.account_id
-  region      = data.aws_region.current.name
-  project     = var.project_name
+  account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
+  project    = var.project_name
+
+  # Single source of truth for the public hostname. Mirrors the convention
+  # scripts/generate_env.sh uses for DEMO_BASE_URL and the record name
+  # scripts/deploy.sh writes to Cloudflare.
+  app_fqdn = "${var.project_name}.${var.domain_name}"
+
   common_tags = {
     Project = var.project_name
   }

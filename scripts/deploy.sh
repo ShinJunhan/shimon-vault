@@ -135,20 +135,25 @@ echo ""
 # ── 5.5: Update Cloudflare DNS to point to current ALB ────────────────────────
 # ALB DNS name changes on every terraform apply (AWS appends a new random
 # suffix each time the load balancer is recreated). Without this step,
-# shimonvault.cshimomoto.com silently breaks after every fresh deploy.
+# shimonvault.junhanshin.com silently breaks after every fresh deploy.
 #
-# NOTE: shimonvault.cshimomoto.com is the LIVE APP domain (points to the ALB).
-# portfolio.cshimomoto.com is the separate GitHub Pages landing page and must
+# NOTE: shimonvault.junhanshin.com is the LIVE APP domain (points to the ALB).
+# portfolio.junhanshin.com is the separate GitHub Pages landing page and must
 # NEVER be touched by this script — it doesn't change per session.
-echo "🌐 Updating Cloudflare DNS (shimonvault.cshimomoto.com → $ALB_DNS)..."
+echo "🌐 Updating Cloudflare DNS (shimonvault.junhanshin.com → $ALB_DNS)..."
 CF_TOKEN=$(grep cloudflare_api_token "$TF_DIR/terraform.tfvars" | cut -d'"' -f2)
-CF_ZONE_ID="9552af6942ec853c0bc814e9689795aa"
-CF_RECORD_ID="be7aa8c36649bf6f6b6d6902413dc462"
+# junhanshin.com zone, and the record ID of the shimonvault CNAME inside it.
+# Get the zone ID from Dashboard -> junhanshin.com -> Overview -> API.
+# Record IDs are not shown in the dashboard; list them with:
+#   curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+#     -H "Authorization: Bearer $CF_TOKEN"
+CF_ZONE_ID="26e52108c4c49fd6976df98f2f935e4f"
+CF_RECORD_ID="9a1341de426fac05312271d7a13a5b24"
 if [ -n "$CF_TOKEN" ]; then
   CF_RESULT=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$CF_RECORD_ID" \
     -H "Authorization: Bearer $CF_TOKEN" \
     -H "Content-Type: application/json" \
-    --data "{\"type\":\"CNAME\",\"name\":\"shimonvault.cshimomoto.com\",\"content\":\"$ALB_DNS\",\"proxied\":false,\"ttl\":1}")
+    --data "{\"type\":\"CNAME\",\"name\":\"shimonvault.junhanshin.com\",\"content\":\"$ALB_DNS\",\"proxied\":false,\"ttl\":1}")
   CF_SUCCESS=$(echo "$CF_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
   if [ "$CF_SUCCESS" = "True" ]; then
     echo "   ✅ Cloudflare DNS updated successfully"

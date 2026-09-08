@@ -153,4 +153,4 @@ Tests use SQLite in-memory — no AWS credentials needed.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed write-up of every component.
 
-Live domain: [shimonvault.cshimomoto.com](https://shimonvault.cshimomoto.com)
+Live domain: [shimonvault.junhanshin.com](https://shimonvault.junhanshin.com)

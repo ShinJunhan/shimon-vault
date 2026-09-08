@@ -91,8 +91,10 @@ resource "aws_lb_target_group" "green" {
 }
 
 # ─── HTTP Listener (port 80) ──────────────────────────────────────────────────
-# Cloudflare terminates HTTPS before traffic reaches the ALB, so plain HTTP:80
-# is all we need internally.
+# Kept as a plain forward (NOT a 301 to HTTPS) on purpose: scripts/deploy.sh and
+# scripts/blue_green_switch.sh poll http://$ALB_DNS/health with a bare curl and
+# assert a literal 200, so a redirect here would fail every deploy's health gate.
+# Public browser traffic arrives on the 443 listener below.
 #
 # CHANGED for Option 1: the listener now forwards to whichever target group
 # var.active_color names (blue by default, green during a deploy). This makes
@@ -102,6 +104,29 @@ resource "aws_lb_listener" "app" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = var.active_color == "green" ? aws_lb_target_group.green.arn : aws_lb_target_group.blue.arn
+  }
+
+  depends_on = [
+    aws_lb_target_group.blue,
+    aws_lb_target_group.green,
+  ]
+}
+
+# ─── HTTPS Listener (port 443) ────────────────────────────────────────────────
+# The public CNAME is DNS-only (grey cloud), so the ALB terminates TLS itself
+# using the ACM certificate issued in acm.tf. Depends on the *validation*
+# resource, not the certificate resource, so the listener is never created with
+# a certificate AWS has not confirmed yet.
+resource "aws_lb_listener" "app_https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.app.certificate_arn
 
   default_action {
     type             = "forward"

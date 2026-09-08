@@ -31,3 +31,13 @@ app_image_tag  = "latest"
 
 # Tailscale IP of your on-prem server — run: tailscale ip -4
 onprem_tailscale_ip = "100.x.x.x"
+
+# Cloudflare API token — needs Zone:DNS:Edit on the zone below.
+# My Profile -> API Tokens -> Create Token
+cloudflare_api_token = "REPLACE_WITH_CLOUDFLARE_API_TOKEN"
+
+# Cloudflare zone ID — Dashboard -> your zone -> Overview -> API -> Zone ID
+cloudflare_zone_id = "REPLACE_WITH_CLOUDFLARE_ZONE_ID"
+
+# Apex domain. Public hostname is "<project_name>.<domain_name>"
+domain_name = "example.com"

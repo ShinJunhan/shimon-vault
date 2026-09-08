@@ -84,7 +84,7 @@ PROMETHEUS_URL="http://${PROMETHEUS_HOST}:${PROMETHEUS_PORT}"
 # Master switch for the one-click /demo/* buttons. The in-app attack runner
 # targets the public app URL and reports a TEST-NET-3 attacker IP.
 DEMO_ENABLED="true"
-DEMO_BASE_URL="https://${PROJECT_NAME}.cshimomoto.com"
+DEMO_BASE_URL="https://${PROJECT_NAME}.junhanshin.com"
 DEMO_ATTACKER_IP="203.0.113.42"
 DEMO_LOGIN_ATTEMPTS="30"
 

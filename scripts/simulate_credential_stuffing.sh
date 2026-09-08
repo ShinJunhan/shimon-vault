@@ -6,7 +6,7 @@
 # This triggers the CloudWatch alarm → Lambda block_ip → Slack + Telegram alert
 #
 # Usage: bash scripts/simulate_credential_stuffing.sh [base_url]
-# Example: bash scripts/simulate_credential_stuffing.sh https://shimonvault.cshimomoto.com
+# Example: bash scripts/simulate_credential_stuffing.sh https://shimonvault.junhanshin.com
 
 set -euo pipefail
 

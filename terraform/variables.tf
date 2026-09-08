@@ -215,8 +215,26 @@ variable "ssh_public_key" {
   description = "SSH public key for EC2 key pair"
 }
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token for DNS automation (used by scripts/deploy.sh, not by Terraform resources directly)"
+  description = "Cloudflare API token for DNS automation (scripts/deploy.sh and the cloudflare provider in acm.tf). Needs Zone:DNS:Edit on the zone below."
   type        = string
   sensitive   = true
   default     = ""
+}
+
+# Both of these carry defaults on purpose. They are configuration, not
+# credentials (the same zone ID is already committed in scripts/deploy.sh), and
+# .github/workflows/cd.yml runs `terraform apply` against a checkout that has NO
+# terraform.tfvars — it is gitignored. A required variable with no default would
+# fail every CD run with "No value for required variable". Only the API token,
+# which IS a credential, is injected from a GitHub secret.
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for domain_name — Dashboard -> the zone -> Overview -> API -> Zone ID"
+  type        = string
+  default     = "26e52108c4c49fd6976df98f2f935e4f"
+}
+
+variable "domain_name" {
+  description = "Registered apex domain hosting the app. The public hostname is \"<project_name>.<domain_name>\"."
+  type        = string
+  default     = "junhanshin.com"
 }

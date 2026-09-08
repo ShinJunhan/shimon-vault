@@ -13,7 +13,7 @@ FRONTEND SERVING:
   In production the React SPA is built by the Dockerfile's frontend-builder
   stage and copied to ./frontend_dist. This file mounts /assets and serves
   index.html at "/" and as a catch-all, so the whole app loads same-origin
-  at shimonvault.cshimomoto.com (no CORS needed in prod). When the build is
+  at shimonvault.junhanshin.com (no CORS needed in prod). When the build is
   absent (local `uvicorn` dev), "/" falls back to a small JSON info page.
 """
 
