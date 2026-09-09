@@ -1,9 +1,18 @@
 name: CD — Blue/Green Deploy
 
-# Trigger: on push to main, or manually via: gh workflow run cd.yml --ref main
+# Trigger: MANUAL ONLY.
+#
+# This workflow runs `terraform apply`, so an automatic push trigger meant every
+# commit to main rebuilt live AWS infrastructure — including immediately after a
+# `terraform destroy`, which silently started billing again. Deploying is now an
+# explicit decision:
+#
+#   gh workflow run cd.yml --ref main --repo <owner>/shimon-vault
+#   ...or the "Run workflow" button on the Actions tab.
+#
+# CI (lint/test) still runs automatically on every push — it costs nothing and
+# is the part you actually want on each commit.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Prevent two deployments from running at the same time
