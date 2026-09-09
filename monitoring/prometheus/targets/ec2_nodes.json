@@ -1,6 +1,6 @@
 [
   {
-    "targets": ["100.93.253.124:9100"],
+    "targets": ["100.119.60.123:9100"],
     "labels": {
       "instance": "shimonvault-app-blue",
       "job": "ec2-nodes"
