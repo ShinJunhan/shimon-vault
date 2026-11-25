@@ -8,7 +8,15 @@ KEY="$HOME/.ssh/id_ed25519_shimonvault"
 CERTS_DIR="$HOME/shimon-vault/monitoring/docker-certs"
 COMPOSE_FILE="$HOME/shimon-vault/monitoring/docker-compose.yml"
 PORTAINER_URL="http://localhost:9000"
-PORTAINER_PASSWORD="${PORTAINER_ADMIN_PASSWORD:-shimonvault2026}"
+# No default password: a fallback in the script would be public in the repo.
+# Checked here, before anything runs, so a missing value can't leave Portainer
+# reset with no admin user.
+if [ -z "${PORTAINER_ADMIN_PASSWORD:-}" ]; then
+    echo "❌ PORTAINER_ADMIN_PASSWORD is not set."
+    echo "   export PORTAINER_ADMIN_PASSWORD='<your password>' and run again."
+    exit 1
+fi
+PORTAINER_PASSWORD="$PORTAINER_ADMIN_PASSWORD"
 
 # Jump through the bastion WITHOUT relying on an ssh-agent.
 #
@@ -137,19 +145,22 @@ for i in $(seq 1 24); do
     sleep 5
 done
 
-echo "🔐 Creating admin user: admin / $PORTAINER_PASSWORD"
+echo "🔐 Creating admin user: admin"
 INIT_HTTP=$(curl -s -o /tmp/portainer_init.json -w "%{http_code}" \
     -X POST "$PORTAINER_URL/api/users/admin/init" \
     -H "Content-Type: application/json" \
     -d "{\"Username\":\"admin\",\"Password\":\"$PORTAINER_PASSWORD\"}" 2>/dev/null || echo "000")
 echo "   Init response: HTTP $INIT_HTTP"
-cat /tmp/portainer_init.json 2>/dev/null && echo ""
 
+# The success body is the new user record, including the password hash, so it
+# is printed only when init fails (then it holds Portainer's error message).
 if [ "$INIT_HTTP" != "200" ] && [ "$INIT_HTTP" != "204" ]; then
     echo "⚠️  Admin init failed (HTTP $INIT_HTTP)"
-    echo "   Open http://localhost:9000 NOW and set password to: $PORTAINER_PASSWORD"
+    cat /tmp/portainer_init.json 2>/dev/null && echo ""
+    echo "   Open http://localhost:9000 NOW and set the password to the value of PORTAINER_ADMIN_PASSWORD"
     exit 1
 fi
+rm -f /tmp/portainer_init.json
 echo "✅ Admin user created"
 
 echo "🔑 Logging in..."
@@ -203,7 +214,7 @@ else
     echo "⚠️  Environment create returned HTTP $ENV_HTTP"
     cat /tmp/portainer_env.json 2>/dev/null && echo ""
     echo "   Manual setup:"
-    echo "   1. Open http://localhost:9000  login: admin / $PORTAINER_PASSWORD"
+    echo "   1. Open http://localhost:9000  login: admin (password: PORTAINER_ADMIN_PASSWORD)"
     echo "   2. Environments → Add → Docker Standalone → API"
     echo "   3. URL: tcp://$TAILSCALE_IP:2376  TLS: enabled"
     echo "   4. Upload certs from: $CERTS_DIR/"
@@ -211,5 +222,5 @@ fi
 
 echo ""
 echo "🌐 Portainer: http://localhost:9000"
-echo "   Login:       admin / $PORTAINER_PASSWORD"
+echo "   Login:       admin (password: PORTAINER_ADMIN_PASSWORD)"
 echo "   Environment: shimonvault-app-blue → tcp://$TAILSCALE_IP:2376"
